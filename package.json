@@ -1,0 +1,19 @@
+{
+  "name": "competition-lover",
+  "version": "0.0.1",
+  "description": "In this workshop, we will be making a Twitter bot written in Javascript using Node.js. What are these words I am saying??",
+  "main": "index.js",
+  "scripts": {
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://niazipan@bitbucket.org/niazipan/twitter-contest.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "homepage": "https://bitbucket.org/niazipan/twitter-contest#readme",
+  "dependencies": {
+    "twitter": "^1.7.0"
+  }
+}
