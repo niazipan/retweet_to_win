@@ -9,23 +9,40 @@ var config = require("./config");
 var Twitter = new TwitterPackage(secret);
 
 // global vars
-var post_list = [];
-var ignore_list = [];
+var post_list = new Array;
+var ignore_list = new Array;
+var ignore_list_path = './ignorelist';
 var ratelimit= [999,999,100];
 var ratelimit_search= [999,999,100];
 var ratelimit_follows= [15,15,100];
 var checkRateLimitInterval;
 var updateRetweetInterval;
+var scanContestsInterval;
+
+// load in the ignore list
+if (fs.existsSync(ignore_list_path)) {
+	console.log('loading ignore list');
+	var ignore_list_str = fs.readFileSync(ignore_list_path, 'utf8');
+	ignore_list = ignore_list_str.split();
+    console.log('ignore list: ' + ignore_list);
+} else {
+	console.log('creating an ignore list');
+	fs.closeSync(fs.openSync(ignore_list_path, 'w'));
+	var text = 'dummy\nlistings\n';
+	fs.appendFile(ignore_list_path, text, function (err) {
+        if (err) return console.log(err);
+    });
+}
 
 // Check rate limits - and quit the app if we're about to get blocked
 function checkRateLimit (){
 	console.log("Checking rate limits");
-	checkRateLimitInterval = setInterval(checkRateLimit, config['rate_limit_update_time']*1000);
+	checkRateLimitInterval = setTimeout(checkRateLimit, config['rate_limit_update_time']*1000);
 
 	if (ratelimit[2] < config['min_ratelimit']){
 		console.log("Ratelimit too low -> Cooldown (" + str(ratelimit[2]) + "%)")
-		clearInterval(checkRateLimitInterval);
-		checkRateLimitInterval = setInterval(checkRateLimit, 30000);
+		clearTimeout(checkRateLimitInterval);
+		checkRateLimitInterval = setTimeout(checkRateLimit, 30000);
 	} else {
 		Twitter.get('application/rate_limit_status', function(err, data, response) {
   			console.log("Got rate limits")
@@ -49,12 +66,12 @@ function checkRateLimit (){
 
   					if (percent < 7.0){
   						// made this 7% for the follows list (15 follows in 15 minutes -> 1/15 is 6.67%)
-						console.log(res_family + " -> " + res + ": " + str(percent) + "  !!! <7% Emergency exit !!!");				
-						process.exit(res_family + " -> " + res + ": " + str(percent) + "  !!! <7% Emergency exit !!!");
+						console.log(res_families + " -> " + res + ": " + percent + "  !!! <7% Emergency exit !!!");				
+						process.exit(res_families + " -> " + res + ": " + percent + "  !!! <7% Emergency exit !!!");
 					} else if (percent < 30.0){
-						console.log(res_family + " -> " + res + ": " + str(percent) + "  !!! <30% alert !!!");				
+						console.log(res_families + " -> " + res + ": " + percent + "  !!! <30% alert !!!");				
 					} else if (percent < 70.0){
-						console.log(res_family + " -> " + res + ": " + str(percent));
+						console.log(res_families + " -> " + res + ": " + percent);
 					}
 				}
   			}
@@ -67,7 +84,7 @@ function checkRateLimit (){
 
 // Update the Retweet queue (this prevents too many retweets happening at once.)
 function UpdateQueue(){
-	updateRetweetInterval = setInterval(UpdateQueue, config['retweet_update_time']*1000);
+	updateRetweetInterval = setTimeout(UpdateQueue, config['retweet_update_time']*1000);
 
 	console.log("=== CHECKING RETWEET QUEUE ===");
 	console.log("Queue length: " + post_list.length);
@@ -75,22 +92,28 @@ function UpdateQueue(){
 	if (post_list.length > 0){
 		if (ratelimit[2] >= config['min_ratelimit_retweet']){
 			var post = post_list[0];
-
-			if( CheckForFollowRequest(post) == true && ratelimit_follows[1] > 1 ){
-				console.log("Retweeting: " + post['id'] + " " + post['text']);
-				CreateFollowRequest(post);
-				CheckForFavoriteRequest(post);
 			
-				Twitter.post('statuses/retweet/:id', { id: post['id'] }, function (err, data, response) {
-	  				if(err){
-	  					console.log(err);
-	  				} else {
-						post_list.shift();
-	  				}
-				});
-			} else {
-				post_list.push(post_list.shift());
+			console.log("------ Retweeting: " + post['id_str'] + " " + post['text']);
+			if( CheckForFollowRequest(post) == true && ratelimit_follows[1] > 1 ){
+				CreateFollowRequest(post);
 			}
+			CheckForFavoriteRequest(post);
+		
+			var tweet_id;
+	
+			if(post.hasOwnProperty('retweeted_status')){
+				tweet_id = post['retweeted_status']['id_str'];
+			} else {
+				tweet_id = post['id_str'];
+			}
+		
+			Twitter.post('statuses/retweet/:id', { id: tweet_id }, function (err, data, response) {
+				if(err){
+					console.log(err);
+				} else {
+					post_list.shift();
+				}
+			});
 
 		
 		} else {
@@ -135,9 +158,6 @@ function CreateFollowRequest(item){
 	}
 }
 
-// could create a follow queue <<<<<-------------
-
-
 // Check if a post requires you to favorite the tweet.
 // Be careful with this function! Twitter may write ban your application for favoriting too aggressively
 function CheckForFavoriteRequest(item){
@@ -169,14 +189,30 @@ function CheckForFavoriteRequest(item){
 
 // Scan for new contests, but not too often because of the rate limit.
 function ScanForContests(){
-	var ScanforContestsInterval = (ScanForContests, config['scan_update_time']*1000);
-
-	var stream = Twitter.stream('statuses/filter', {track: config['search_queries'], filter: 'verified'});
-
+	var stream = Twitter.stream('statuses/filter', {track: config['search_queries']});
+	
 	stream.on('tweet', function (tweet) {
-		//console.log("Getting new results for: " + search_query);
-  		console.log(tweet);
-
+		//console.log("New tweet: " + tweet['text']);
+  		//console.log(tweet);
+  		
+  		var tweet_id;
+  		
+  		if(tweet.hasOwnProperty('retweeted_status')){
+  			//console.log("-- It's a retweet");
+  			tweet_id = tweet['retweeted_status']['id'];
+  		} else {
+  			//console.log("-- New tweet!");
+  			tweet_id = tweet['id'];
+  		}
+  		
+  		if(ignore_list.indexOf(tweet_id) < 0){
+			//console.log("New tweet: " + tweet['text']);
+  			//console.log("--- Adding to the list");
+  			post_list.push(tweet);
+  			addToIgnoreList(tweet_id);
+  		} else {
+  			//console.log("Ignored!");
+  		}
 	});
 
 	// ... when we get an error...
@@ -184,96 +220,19 @@ function ScanForContests(){
     	console.log(error);    
 	});
 	
+	
+	
+}
+
+// Add tweet to the ignore list and write to file
+function addToIgnoreList(tweet_id){
+	ignore_list.push(tweet_id);
+	var text = tweet_id + '\n';
+	fs.appendFile(ignore_list_path, text, function (err) {
+        if (err) return console.log(err);
+    });
 }
 
 checkRateLimit();
 ScanForContests();
 UpdateQueue();
-
-/*
-	if (ratelimit_search[2] >= min_ratelimit_search){}
-	
-		console.log("=== SCANNING FOR NEW CONTESTS ===");
-
-		for (var search_query in config['search_queries']){
-
-			print("Getting new results for: " + search_query)
-		
-			try{
-				r = api.request('search/tweets', {'q':search_query, 'result_type':"mixed", 'count':100})
-				CheckError(r)
-				c=0
-					
-				for item in r:
-					
-					c=c+1
-					user_item = item['user']
-					screen_name = user_item['screen_name']
-					text = item['text']
-					text = text.replace("\n","")
-					id = str(item['id'])
-					original_id=id
-					is_retweet = 0
-
-					if 'retweeted_status' in item:
-
-						is_retweet = 1
-						original_item = item['retweeted_status']
-						original_id = str(original_item['id'])
-						original_user_item = original_item['user']
-						original_screen_name = original_user_item['screen_name']
-
-					if not original_id in ignore_list:
-
-						if not original_screen_name in ignore_list:
-				
-							if not screen_name in ignore_list:
-	
-								if item['retweet_count'] > 0:
-
-									post_list.append(item)
-									f_ign = open('ignorelist', 'a')
-
-									if is_retweet:
-										print(id + " - " + screen_name + " retweeting " + original_id + " - " + original_screen_name + ": " + text)
-										ignore_list.append(original_id)
-										f_ign.write(original_id + "\n")
-									else:
-										print(id + " - " + screen_name + ": " + text)
-										ignore_list.append(id)
-										f_ign.write(id + "\n")
-
-									f_ign.close()
-
-						else:
-			
-							if is_retweet:
-								print(id + " ignored: " + original_screen_name + " on ignore list")
-							else:
-								print(original_screen_name + " in ignore list")
-
-					else:
-	
-						if is_retweet:
-							print(id + " ignored: " + original_id + " on ignore list")
-						else:
-							print(id + " in ignore list")
-				
-				print("Got " + str(c) + " results")
-
-			except Exception as e:
-				print("Could not connect to TwitterAPI - are your credentials correct?")
-				print("Exception: " + e)
-
-	else:
-
-		print("Search skipped! Queue: " + str(len(post_list)) + " Ratelimit: " + str(ratelimit_search[1]) + "/" + str(ratelimit_search[0]) + " (" + str(ratelimit_search[2]) + "%)")
-
-
-
-
-checkRateLimit();
-/*
-// Call the stream function and pass in 'statuses/filter', our filter object.
-
-*/
