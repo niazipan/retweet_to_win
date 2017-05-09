@@ -144,8 +144,9 @@ function CheckForFollowRequest(item){
 	var userArray = [];
 
 	userArray.push(userToFollow);
+
 	for (let user of userMentions){
-		if (user !== userToFollow) userArray.push(user);
+		if (user !== userToFollow) userArray.push(user['screen_name']);
 	}
 
 	for(let follow_keyword of config['follow_keywords']){
@@ -160,6 +161,7 @@ function CheckForFollowRequest(item){
 					Twitter.post('friendships/create', {'screen_name': screen_name}, function(err, data, response){
 						if(err){
 							console.log(err);
+							console.log(screen_name);
 							return false;
 						} else {
 							console.log("Follow: " + screen_name);
@@ -185,19 +187,20 @@ function CheckForFavoriteRequest(item){
 	var text = item['text'];
 	for(let faveKeyWord of config['fav_keywords']){
 		if (text.toLowerCase().indexOf(faveKeyWord) >= 0){
+			console.log('>>>>> need to like it');
 			try {
-				Twitter.post('favorites/create', {'id': item['retweeted_status']['id']}, function(err, data, response){
+				Twitter.post('favorites/create', {'id': item['retweeted_status']['id_str']}, function(err, data, response){
 					if(err){
-						console.log(err);
+						console.log("Favorite error: " + err);
 					} else {
-						console.log("Favorite: " + item['retweeted_status']['id']);
+						console.log("Favorite: " + item['retweeted_status']['id_str']);
 					}
 				});
 			}
 			catch(err) {
-				Twitter.post('favorites/create', {'id': item['id']}, function(err, data, response){
+				Twitter.post('favorites/create', {'id': item['id_str']}, function(err, data, response){
 					if(err){
-						console.log(err);
+						console.log("Favorite error: " + err);
 					} else {
 						console.log("Favorite: " + item['id']);
 					}
