@@ -91,31 +91,35 @@ function UpdateQueue(){
 
 	if (post_list.length > 0){
 		if (ratelimit[2] >= config['min_ratelimit_retweet']){
-			var post = post_list[0];
-			
-			console.log("------ Retweeting: " + post['id_str'] + " " + post['text']);
-			if( CheckForFollowRequest(post) == true && ratelimit_follows[1] > 1 ){
-				CreateFollowRequest(post);
-			}
-			CheckForFavoriteRequest(post);
-		
-			var tweet_id;
-	
-			if(post.hasOwnProperty('retweeted_status')){
-				tweet_id = post['retweeted_status']['id_str'];
-			} else {
-				tweet_id = post['id_str'];
-			}
-		
-			Twitter.post('statuses/retweet/:id', { id: tweet_id }, function (err, data, response) {
-				if(err){
-					console.log(err);
-				} else {
-					post_list.shift();
-				}
-			});
 
+			var post = post_list[0];
+
+			if( CheckForFollowRequest(post)){
+
+				CheckForFavoriteRequest(post);
 		
+				var tweet_id;
+		
+				if(post.hasOwnProperty('retweeted_status')){
+					tweet_id = post['retweeted_status']['id_str'];
+				} else {
+					tweet_id = post['id_str'];
+				}
+			
+				Twitter.post('statuses/retweet/:id', { id: tweet_id }, function (err, data, response) {
+					if(err){
+						console.log(err);
+					} else {
+						console.log("------ Retweeting: " + tweet_id + " " + post['text']);
+					}
+				});
+
+			} else {
+				clearTimeout(updateRetweetInterval);
+				UpdateQueue();
+			}
+			post_list.shift();
+			
 		} else {
 				console.log("Ratelimit at " + ratelimit[2] + "% -> pausing retweets")
 		}
@@ -125,36 +129,47 @@ function UpdateQueue(){
 // Check if a post requires you to follow the user.
 // Be careful with this function! Twitter may write ban your application for following too aggressively
 function CheckForFollowRequest(item){
-	var text = item['text'];
-	for(var follow_text in config['follow_keywords']){
-		if (text.toLowerCase().indexOf(follow_text) >= 0){
-			console.log("follow required");
-			return true;
+	var tweet;
+	if(item.hasOwnProperty('retweeted_status')){
+		tweet = item['retweeted_status'];
+	} else {
+		tweet = item;
+	}
+	var text = tweet['text'];
+	var userToFollow = tweet['user']['screen_name'];
+	var userMentions = tweet['entities']['user_mentions'];
+
+	var userArray = [];
+
+	userArray.push(userToFollow);
+	for (let user of userMentions){
+		if (user !== userToFollow) userArray.push(user);
+	}
+
+	if (text.toLowerCase().indexOf(config['follow_keywords']) >= 0){
+
+		console.log("follow required");
+
+		if(ratelimit_follows[1] >= userArray.length){
+
+			for (let screen_name of userArray){
+				Twitter.post('friendships/create', {'screen_name': screen_name}, function(err, data, response){
+					if(err){
+						console.log(err);
+						return false;
+					} else {
+						console.log("Follow: " + item['retweeted_status']['user']['screen_name']);
+						return true;
+					}
+				});					
+			}
 		} else {
-			console.log("follow not required");
+			console.log("- but follow limit reached");
 			return false;
 		}
-	}
-}
-
-function CreateFollowRequest(item){
-	try {
-		Twitter.post('friendships/create', {'screen_name': item['retweeted_status']['user']['screen_name']}, function(err, data, response){
-			if(err){
-				console.log(err);
-			} else {
-				console.log("Follow: " + item['retweeted_status']['user']['screen_name']);
-			}
-		});
-	}
-	catch (err){
-		Twitter.post('friendships/create', {'screen_name': item['user']['screen_name']}, function(err, data, response){
-			if(err){
-				console.log(err);
-			} else {
-				console.log("Follow: " + item['user']['screen_name']);
-			}
-		});
+	} else {
+		console.log("follow not required");
+		return true;
 	}
 }
 
@@ -162,8 +177,8 @@ function CreateFollowRequest(item){
 // Be careful with this function! Twitter may write ban your application for favoriting too aggressively
 function CheckForFavoriteRequest(item){
 	var text = item['text'];
-	for(var fav_text in config['fav_keywords']){
-		if (text.toLowerCase().indexOf(fav_text) >= 0){
+	for(let faveKeyWord of config['fav_keywords']){
+		if (text.toLowerCase().indexOf(faveKeyWord) >= 0){
 			try {
 				Twitter.post('favorites/create', {'id': item['retweeted_status']['id']}, function(err, data, response){
 					if(err){
@@ -209,6 +224,10 @@ function ScanForContests(){
 			//console.log("New tweet: " + tweet['text']);
   			//console.log("--- Adding to the list");
   			post_list.push(tweet);
+  			if(post_list.length > 200){
+  				stream.stop();
+  				setTimeout(stream.start(), 10*60*1000);
+  			}
   			addToIgnoreList(tweet_id);
   		} else {
   			//console.log("Ignored!");
