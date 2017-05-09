@@ -1,6 +1,6 @@
 {
         "search_queries": ["rt to win", "retweet and win", "rt and win", "retweet to win"],
-        "follow_keywords": "follow",
+        "follow_keywords": ["follow","rt&f"],
         "fav_keywords": ["fav", "like"],
         "scan_update_time": 1800,
         "retweet_update_time": 20,

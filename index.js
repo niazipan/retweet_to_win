@@ -113,12 +113,14 @@ function UpdateQueue(){
 						console.log("------ Retweeting: " + tweet_id + " " + post['text']);
 					}
 				});
+				post_list.shift();
 
 			} else {
+
+				post_list.shift();
 				clearTimeout(updateRetweetInterval);
 				UpdateQueue();
 			}
-			post_list.shift();
 			
 		} else {
 				console.log("Ratelimit at " + ratelimit[2] + "% -> pausing retweets")
@@ -146,30 +148,34 @@ function CheckForFollowRequest(item){
 		if (user !== userToFollow) userArray.push(user);
 	}
 
-	if (text.toLowerCase().indexOf(config['follow_keywords']) >= 0){
+	for(let follow_keyword of config['follow_keywords']){
 
-		console.log("follow required");
+		if (text.toLowerCase().indexOf(follow_keyword) >= 0){
 
-		if(ratelimit_follows[1] >= userArray.length){
+			console.log("follow required");
 
-			for (let screen_name of userArray){
-				Twitter.post('friendships/create', {'screen_name': screen_name}, function(err, data, response){
-					if(err){
-						console.log(err);
-						return false;
-					} else {
-						console.log("Follow: " + item['retweeted_status']['user']['screen_name']);
-						return true;
-					}
-				});					
+			if(ratelimit_follows[1] >= userArray.length){
+
+				for (let screen_name of userArray){
+					Twitter.post('friendships/create', {'screen_name': screen_name}, function(err, data, response){
+						if(err){
+							console.log(err);
+							return false;
+						} else {
+							console.log("Follow: " + screen_name);
+							return true;
+						}
+					});					
+				}
+			} else {
+				console.log("- but follow limit reached");
+				return false;
 			}
 		} else {
-			console.log("- but follow limit reached");
-			return false;
+			console.log("follow not required");
+			return true;
 		}
-	} else {
-		console.log("follow not required");
-		return true;
+
 	}
 }
 
@@ -226,7 +232,7 @@ function ScanForContests(){
   			post_list.push(tweet);
   			if(post_list.length > 200){
   				stream.stop();
-  				setTimeout(stream.start(), 10*60*1000);
+  				setTimeout(stream.start, 600000);
   			}
   			addToIgnoreList(tweet_id);
   		} else {
