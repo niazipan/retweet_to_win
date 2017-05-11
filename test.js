@@ -6,14 +6,54 @@ var config = require("./config");
 
 //make a new Twitter object
 var Twitter = new TwitterPackage(secret);
+var fs = require('fs');
 
-Twitter.get('search/tweets', {'q': config['search_queries'][1], 'result_type':'recent', 'count':10,'lang' : 'en'}, function(err, data, response) {
+
+var ignore_list_path = './ignorelist';
+
+fs.closeSync(fs.openSync(ignore_list_path, 'w'));
+var text = 'first\n';
+fs.appendFile(ignore_list_path, text, function (err) {
+    if (err) return console.log(err);
+});
+
+function addToIgnoreList(tweet_id){
+	var text = tweet_id + '\n';
+	fs.appendFile(ignore_list_path, text, function (err) {
+        if (err) return console.log(err);
+    });
+}
+
+
+var since_id;
+var myCount = 0;
+
+function makeTheCalls(){
+	Twitter.get('statuses/user_timeline', {'screen_name': 'complover81', 'count' : 200, 'max_id': since_id}, function(err, data, response) {
+		if (err) console.log("error: " + err);
+		for(let tweet of data){
+			if(tweet.hasOwnProperty('retweeted_status')){
+				addToIgnoreList(tweet['retweeted_status']['id_str']);
+				//console.log(tweet['retweeted_status']['id_str']);
+				//console.log(tweet['id_str']);
+			}
+		}
+		since_id = data[data.length-1]['id_str'];
+		myCount++;
+		console.log(myCount);
+		console.log(since_id);
+		if (myCount < 5) makeTheCalls();
+	});
+}
+
+makeTheCalls();
+/*Twitter.get('search/tweets', {'q': config['search_queries'][1], 'result_type':'recent', 'count':10,'lang' : 'en'}, function(err, data, response) {
 	if (err) console.log("error: " + err);
 	console.log("================================= : " + encodeURI('RT + F'));
 	for(var tweet of data.statuses){
 		console.log(tweet['text']);
 	}
-});
+});*/
 
 
 /*
