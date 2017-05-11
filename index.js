@@ -24,7 +24,7 @@ if (fs.existsSync(ignore_list_path)) {
 	console.log('loading ignore list');
 	var ignore_list_str = fs.readFileSync(ignore_list_path, 'utf8');
 	ignore_list = ignore_list_str.split();
-    console.log('ignore list: ' + ignore_list);
+    //console.log('ignore list: ' + ignore_list);
 } else {
 	console.log('creating an ignore list');
 	fs.closeSync(fs.openSync(ignore_list_path, 'w'));
@@ -45,7 +45,6 @@ function checkRateLimit (){
 		checkRateLimitInterval = setTimeout(checkRateLimit, 30000);
 	} else {
 		Twitter.get('application/rate_limit_status', function(err, data, response) {
-  			console.log("Got rate limits")
   			for (var res_families in data['resources']){
   				for(var res in data['resources'][res_families]){
   					var limit = data['resources'][res_families][res]['limit'];
@@ -66,10 +65,10 @@ function checkRateLimit (){
 
   					if (percent < 7.0){
   						// made this 7% for the follows list (15 follows in 15 minutes -> 1/15 is 6.67%)
-						console.log(res_families + " -> " + res + ": " + percent + "  !!! <7% Emergency exit !!!");				
-						process.exit(res_families + " -> " + res + ": " + percent + "  !!! <7% Emergency exit !!!");
+						console.log(res_families + " -> " + res + ": " + percent + "  !!! <7% Emergency exit !!!" + " Remaingin -> " + remaining);				
+						process.exit(res_families + " -> " + res + ": " + percent + "  !!! <7% Emergency exit !!!" + " Remaingin -> " + remaining);
 					} else if (percent < 30.0){
-						console.log(res_families + " -> " + res + ": " + percent + "  !!! <30% alert !!!");				
+						console.log(res_families + " -> " + res + ": " + percent + "  !!! <30% alert !!!" + " Remaingin -> " + remaining);				
 					} else if (percent < 70.0){
 						console.log(res_families + " -> " + res + ": " + percent);
 					}
@@ -109,6 +108,7 @@ function UpdateQueue(){
 				Twitter.post('statuses/retweet/:id', { id: tweet_id }, function (err, data, response) {
 					if(err){
 						console.log(err);
+						console.log("------ Failed tweet: " + tweet_id + " : " + post['id_str'] + " : " + post['text']);
 					} else {
 						console.log("------ Retweeting: " + tweet_id + " " + post['text']);
 					}
@@ -149,35 +149,35 @@ function CheckForFollowRequest(item){
 		if (user !== userToFollow) userArray.push(user['screen_name']);
 	}
 
+	var toFollow = false;
+
 	for(let follow_keyword of config['follow_keywords']){
 
-		if (text.toLowerCase().indexOf(follow_keyword) >= 0){
+		if (text.toLowerCase().indexOf(follow_keyword) >= 0) toFollow = true;
 
-			console.log("follow required");
+	}
 
-			if(ratelimit_follows[1] >= userArray.length){
+	if(toFollow){
+		if(ratelimit_follows[1] >= userArray.length){
 
-				for (let screen_name of userArray){
-					Twitter.post('friendships/create', {'screen_name': screen_name}, function(err, data, response){
-						if(err){
-							console.log(err);
-							console.log(screen_name);
-							return false;
-						} else {
-							console.log("Follow: " + screen_name);
-							return true;
-						}
-					});					
-				}
-			} else {
-				console.log("- but follow limit reached");
-				return false;
+			for (let screen_name of userArray){
+				Twitter.post('friendships/create', {'screen_name': screen_name}, function(err, data, response){
+					if(err){
+						console.log(err);
+						console.log(screen_name);
+						return false;
+					} else {
+						console.log("Follow: " + screen_name);
+						return true;
+					}
+				});					
 			}
 		} else {
-			console.log("follow not required");
-			return true;
+			console.log("- follow limit reached");
+			return false;
 		}
-
+	} else {
+		return true;
 	}
 }
 
@@ -212,44 +212,46 @@ function CheckForFavoriteRequest(item){
 
 
 // Scan for new contests, but not too often because of the rate limit.
-function ScanForContests(){
-	var stream = Twitter.stream('statuses/filter', {track: config['search_queries']});
-	
-	stream.on('tweet', function (tweet) {
-		//console.log("New tweet: " + tweet['text']);
-  		//console.log(tweet);
-  		
-  		var tweet_id;
-  		
-  		if(tweet.hasOwnProperty('retweeted_status')){
-  			//console.log("-- It's a retweet");
-  			tweet_id = tweet['retweeted_status']['id'];
-  		} else {
-  			//console.log("-- New tweet!");
-  			tweet_id = tweet['id'];
-  		}
-  		
-  		if(ignore_list.indexOf(tweet_id) < 0){
-			//console.log("New tweet: " + tweet['text']);
-  			//console.log("--- Adding to the list");
-  			post_list.push(tweet);
-  			if(post_list.length > 200){
-  				stream.stop();
-  				setTimeout(stream.start, 600000);
-  			}
-  			addToIgnoreList(tweet_id);
-  		} else {
-  			//console.log("Ignored!");
-  		}
-	});
+function ScanForContests(){	
+	scanContestsInterval = setTimeout(ScanForContests, config['scan_update_time']*1000);
 
-	// ... when we get an error...
-	stream.on('error', function(error) {
-    	console.log(error);    
-	});
-	
-	
-	
+	if (ratelimit_search[2] >= config['min_ratelimit_search']){
+
+		for (var search_query of config['search_queries']){
+			Twitter.get('search/tweets', {'q':search_query, 'result_type':'recent', 'count':100, 'lang': 'en'}, function(err, data, response) {
+				if (err) console.log("error: " + err);
+				
+				for(var tweet of data.statuses){
+					var tweet_id = tweet['id_str'];
+			  		var original_id;
+			  		var screen_name = tweet['user']['screen_name'];
+			  		var original_name;
+
+					if(tweet.hasOwnProperty('retweeted_status')){
+			  			//console.log("-- It's a retweet");
+			  			original_id = tweet['retweeted_status']['id_str'];
+			  			original_name = tweet['retweeted_status']['user']['screen_name'];
+			  		}
+					
+					if(ignore_list.indexOf(tweet_id) < 0 && ignore_list.indexOf(original_id) < 0 && ignore_list.indexOf(screen_name) < 0 && ignore_list.indexOf(original_name)) {
+						//console.log("New tweet: " + tweet['text']);
+			  			//console.log("--- Adding to the list");
+			  			post_list.push(tweet);
+			  			if(post_list.length > 200){
+			  				clearTimeout(scanContestsInterval);
+			  				setTimeout(ScanForContests, 300000);
+			  			}
+			  			addToIgnoreList(tweet_id);
+			  			addToIgnoreList(original_id);
+			  			addToIgnoreList(screen_name);
+			  			addToIgnoreList(original_name);
+			  		} 
+				}
+				
+			});
+		}
+
+	}
 }
 
 // Add tweet to the ignore list and write to file

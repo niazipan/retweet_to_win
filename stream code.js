@@ -31,23 +31,22 @@
 	});*/
 	
 	
-	/*scanContestsInterval = setTimeout(ScanForContests, config['scan_update_time']);
+	scanContestsInterval = setTimeout(ScanForContests, config['scan_update_time']);
 	
 	if (ratelimit_search[2] >= config['min_ratelimit_search']){
 	
-		for (var search_query in config['search_queries']){
-			Twitter.get('search/tweets', {'q':search_query, 'result_type':'recent', 'count':1}, function(err, data, response) {
+		for (var search_query of config['search_queries']){
+			Twitter.get('search/tweets', {'q':search_query, 'result_type':'recent', 'count':100}, function(err, data, response) {
 				if (err) console.log("error: " + err);
 				
 				//console.log("data 0 id : " + data.statuses[0]['id']);
 				
 				
-				for(var tweetToParse in data.statuses){
-					var tweet = JSON.parse(tweetToParse);
-					console.log(tweet);
+				for(var tweetToParse of data.statuses){
+					console.log(tweetToParse['text']);
 					var tweet_id;
 		
-					if(tweet.hasOwnProperty('retweeted_status')){
+					/*if(tweet.hasOwnProperty('retweeted_status')){
 						console.log('retweet');
 						tweet_id = tweet.retweeted_status.id;
 					} else {
@@ -62,9 +61,9 @@
 						console.log(tweet);
 						post_list.push(tweet);
 						addToIgnoreList(tweet_id);
-					}
+					}*/
 				}
 				
 			});
 		}
-	}*/
+	}
