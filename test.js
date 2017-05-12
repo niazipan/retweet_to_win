@@ -9,6 +9,16 @@ var Twitter = new TwitterPackage(secret);
 var fs = require('fs');
 
 
+Twitter.get('search/tweets', {'q': '\"rt to win\"', 'result_type':'recent', 'count':10,'lang' : 'en'}, function(err, data, response) {
+	if (err) console.log("error: " + err);
+	console.log("================================= : " + encodeURI('RT + F'));
+	for(var tweet of data.statuses){
+		console.log(tweet['text']);
+	}
+});
+
+
+/*
 var ignore_list_path = './ignorelist';
 
 fs.closeSync(fs.openSync(ignore_list_path, 'w'));
@@ -47,16 +57,9 @@ function makeTheCalls(){
 }
 
 makeTheCalls();
-/*Twitter.get('search/tweets', {'q': config['search_queries'][1], 'result_type':'recent', 'count':10,'lang' : 'en'}, function(err, data, response) {
-	if (err) console.log("error: " + err);
-	console.log("================================= : " + encodeURI('RT + F'));
-	for(var tweet of data.statuses){
-		console.log(tweet['text']);
-	}
-});*/
 
 
-/*
+
 scanContestsInterval = setTimeout(ScanForContests, config['scan_update_time']);
 
 if (ratelimit_search[2] >= config['min_ratelimit_search']){
