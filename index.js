@@ -11,7 +11,10 @@ var Twitter = new TwitterPackage(secret);
 // global vars
 var post_list = new Array;
 var ignore_list = new Array;
+var friend_list = new Array;
 var ignore_list_path = './ignorelist';
+var ignore_keywords = config['ignore_keywords'];
+var friend_list_path = './friendlist';
 var ratelimit= [999,999,100];
 var ratelimit_search= [999,999,100];
 var ratelimit_follows= [15,15,100];
@@ -28,12 +31,26 @@ if (fs.existsSync(ignore_list_path)) {
 } else {
 	console.log('creating an ignore list');
 	fs.closeSync(fs.openSync(ignore_list_path, 'w'));
-	var text = 'dummy\nlistings\n';
+	var text = 'dummylisting\nlistings\n';
 	fs.appendFile(ignore_list_path, text, function (err) {
         if (err) return console.log(err);
     });
 }
 
+// load in the friend list
+if (fs.existsSync(friend_list_path)) {
+	console.log('loading friend list');
+	var friend_list_str = fs.readFileSync(ignore_list_path, 'utf8');
+	friend_list = friend_list_str.split();
+    //console.log('ignore list: ' + ignore_list);
+} else {
+	console.log('creating an friend list');
+	fs.closeSync(fs.openSync(friend_list_path, 'w'));
+	var text = 'dummylisting\n';
+	fs.appendFile(friend_list_path, text, function (err) {
+        if (err) return console.log(err);
+    });
+}
 // Check rate limits - and quit the app if we're about to get blocked
 function checkRateLimit (){
 	console.log("Checking rate limits");
@@ -68,7 +85,7 @@ function checkRateLimit (){
 						console.log(res_families + " -> " + res + ": " + percent + "  !!! <7% Emergency exit !!!" + " Remaingin -> " + remaining);				
 						process.exit(res_families + " -> " + res + ": " + percent + "  !!! <7% Emergency exit !!!" + " Remaingin -> " + remaining);
 					} else if (percent < 30.0){
-						console.log(res_families + " -> " + res + ": " + percent + "  !!! <30% alert !!!" + " Remaingin -> " + remaining);				
+						console.log(res_families + " -> " + res + ": " + percent + "  !!! <30% alert !!!" + " Remaining -> " + remaining);				
 					} else if (percent < 70.0){
 						console.log(res_families + " -> " + res + ": " + percent);
 					}
@@ -91,37 +108,31 @@ function UpdateQueue(){
 	if (post_list.length > 0){
 		if (ratelimit[2] >= config['min_ratelimit_retweet']){
 
-			var post = post_list[0];
-
-			if( CheckForFollowRequest(post)){
-
-				CheckForFavoriteRequest(post);
-		
-				var tweet_id;
-		
-				if(post.hasOwnProperty('retweeted_status')){
-					tweet_id = post['retweeted_status']['id_str'];
-				} else {
-					tweet_id = post['id_str'];
-				}
+			var tweet = post_list[0];
 			
-				Twitter.post('statuses/retweet/:id', { id: tweet_id }, function (err, data, response) {
-					if(err){
-						console.log(err);
-						console.log("------ Failed tweet: " + tweet_id + " : " + post['id_str'] + " : " + post['text']);
-					} else {
-						console.log("------ Retweeting: " + tweet_id + " " + post['text']);
-					}
-				});
-				post_list.shift();
-
+			var tweet_id;
+	
+			if(tweet.hasOwnProperty('retweeted_status')){
+				tweet_id = tweet['retweeted_status']['id_str'];
+			} else if (post['in_reply_to_status_id_str'] != null) {
+				tweet_id = tweet['in_reply_to_status_id_str'];
 			} else {
-
-				post_list.shift();
-				clearTimeout(updateRetweetInterval);
-				UpdateQueue();
+				tweet_id = tweet['id_str'];
 			}
-			
+		
+			Twitter.post('statuses/retweet/:id', { id: tweet_id }, function (err, data, response) {
+				if(err){
+					console.log(err);
+					console.log("------ Failed tweet: " + tweet_id + " : " + tweet['id_str'] + " : " + tweet['text']);
+				} else {
+					console.log("------ Retweeting: " + tweet_id + " " + tweet['text']);
+					CheckForFavoriteRequest(tweet);
+					CheckForFollowRequest(tweet);
+				}
+			});
+
+			post_list.shift();
+
 		} else {
 				console.log("Ratelimit at " + ratelimit[2] + "% -> pausing retweets")
 		}
@@ -146,39 +157,37 @@ function CheckForFollowRequest(item){
 	userArray.push(userToFollow);
 
 	for (let user of userMentions){
-		if (user !== userToFollow) userArray.push(user['screen_name']);
+		if (user['screen_name'] !== userToFollow) userArray.push(user['screen_name']);
 	}
 
 	var toFollow = false;
 
 	for(let follow_keyword of config['follow_keywords']){
-
 		if (text.toLowerCase().indexOf(follow_keyword) >= 0) toFollow = true;
-
 	}
 
 	if(toFollow){
+		console.log("Follow text: " + text);
+		console.log("Follow mentions: " + userMentions);
+		console.log("Follow userArray: " + userArray);
+		console.log(ratelimit_follows[1] + " : " + userArray.length);
 		if(ratelimit_follows[1] >= userArray.length){
-
 			for (let screen_name of userArray){
 				Twitter.post('friendships/create', {'screen_name': screen_name}, function(err, data, response){
 					if(err){
-						console.log(err);
+						console.log("Follow error: " + err);
 						console.log(screen_name);
-						return false;
 					} else {
 						console.log("Follow: " + screen_name);
-						return true;
+						//addToFriendList(screen_name);
 					}
 				});					
 			}
+
 		} else {
-			console.log("- follow limit reached");
-			return false;
+			console.log("-> follow limit reached");
 		}
-	} else {
-		return true;
-	}
+	} 
 }
 
 // Check if a post requires you to favorite the tweet.
@@ -222,19 +231,31 @@ function ScanForContests(){
 				if (err) console.log("Search error: " + err);
 				
 				for(var tweet of data.statuses){
-					var tweet_id = tweet['id_str'];
+					var tweet_id = tweet['id'];
+					var tweet_id_str = tweet['id_str'];
 			  		var original_id;
+			  		var original_id_str;
 			  		var screen_name = tweet['user']['screen_name'];
 
 					if(tweet.hasOwnProperty('retweeted_status')){
-			  			original_id = tweet['retweeted_status']['id_str'];
+			  			original_id = tweet['retweeted_status']['id'];
+			  			original_id_str = tweet['retweeted_status']['id_str'];
+			  		} else if (tweet['in_reply_to_status_id_str'] != null) {
+			  			original_id = tweet['in_reply_to_status_id'];
+			  			original_id_str = tweet['in_reply_to_status_id_str'];
 			  		}
 					
-					if(ignore_list.indexOf(tweet_id) < 0 && ignore_list.indexOf(original_id) < 0 && ignore_list.indexOf(screen_name) < 0) {
-						post_list.push(tweet);
-			  			addToIgnoreList(tweet_id);
-			  			addToIgnoreList(original_id);
-			  			addToIgnoreList(screen_name);
+					if(ignore_list.indexOf(tweet_id) < 0 && ignore_list.indexOf(original_id) < 0 && ignore_list.indexOf(tweet_id_str) < 0 && ignore_list.indexOf(original_id_str) < 0 && ignore_list.indexOf(screen_name) < 0) {
+						var no_ignore_keyword = true;
+						for (let ignore_keyword of ignore_keywords){
+							if(tweet['text'].toLowerCase().indexOf(ignore_keywords[0]) >= 0) no_ignore_keyword = false;
+						}
+						if (no_ignore_keyword){
+							post_list.push(tweet);
+				  			addToIgnoreList(tweet_id);
+				  			addToIgnoreList(original_id);
+				  			addToIgnoreList(screen_name);
+			  			}
 			  		} 
 				}
 				
@@ -252,6 +273,40 @@ function addToIgnoreList(tweet_id){
         if (err) return console.log(err);
     });
 }
+
+// keep list of people following managable
+function addToFriendList(screen_name){
+	friend_list.push(screen_name);
+	if(friend_list.length>3000){
+		var df = friend_list.length - 3000;
+		for(var i=0; i<df; i++){
+			Twitter.post('friendships/destroy', {'screen_name': friend_list[0]}, function(err, data, response){
+				if(err) {
+					console.log("friendship destroy error: " + err);
+				} else {
+					console.log("friendship destroyed: " + friend_list[0]);
+					friend_list.shift();
+				}
+			});
+		}
+	}
+	var friend_list_str = friend_list.join();
+	friend_list_str.replaceAll(',','\n');
+	fs.truncate(friend_list_path, 0, function() {
+    fs.writeFile(friend_list_path, friend_list_str, function (err) {
+        if (err) {
+            console.log("Error writing friend_list file: " + err);
+        } else {
+        	console.log("Written a new friend_list file. Length -> " + friend_list.length);
+        }
+    });
+});
+}
+
+String.prototype.replaceAll = function(search, replacement) {
+    var target = this;
+    return target.replace(new RegExp(search, 'g'), replacement);
+};
 
 checkRateLimit();
 ScanForContests();
