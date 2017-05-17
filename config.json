@@ -1,7 +1,8 @@
 {
         "search_queries": ["\"rt to win\"", "\"RT & F\" win", "\"retweet to win\""],
         "follow_keywords": ["follow","rt&f", "flw", "rt&amp;f", "& f ", "&amp; f "],
-        "ignore_keywords": ["bmmas"],
+        "ignore_keywords": ["bmmas", "bot "],
+        "ignore_screen_names": ["RealBotSpotter"],
         "fav_keywords": ["fav", "like"],
         "scan_update_time": 180,
         "retweet_update_time": 20,

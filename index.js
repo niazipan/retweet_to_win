@@ -114,7 +114,10 @@ function UpdateQueue(){
 	
 			if(tweet.hasOwnProperty('retweeted_status')){
 				tweet_id = tweet['retweeted_status']['id_str'];
-			} else if (post['in_reply_to_status_id_str'] != null) {
+			} else if (tweet['in_reply_to_status_id_str'] != null) {
+				console.log("Replied status: " + tweet['text']);
+				console.log("Replied status id: " + tweet['id_str']);
+				console.log("Replied reply status id: " + tweet['in_reply_to_user_id_str']);
 				tweet_id = tweet['in_reply_to_status_id_str'];
 			} else {
 				tweet_id = tweet['id_str'];
@@ -231,21 +234,17 @@ function ScanForContests(){
 				if (err) console.log("Search error: " + err);
 				
 				for(var tweet of data.statuses){
-					var tweet_id = tweet['id'];
-					var tweet_id_str = tweet['id_str'];
+					var tweet_id = tweet['id_str'];
 			  		var original_id;
-			  		var original_id_str;
 			  		var screen_name = tweet['user']['screen_name'];
 
 					if(tweet.hasOwnProperty('retweeted_status')){
-			  			original_id = tweet['retweeted_status']['id'];
-			  			original_id_str = tweet['retweeted_status']['id_str'];
+			  			original_id = tweet['retweeted_status']['id_str'];
 			  		} else if (tweet['in_reply_to_status_id_str'] != null) {
-			  			original_id = tweet['in_reply_to_status_id'];
-			  			original_id_str = tweet['in_reply_to_status_id_str'];
+			  			original_id = tweet['in_reply_to_status_id_str'];
 			  		}
 					
-					if(ignore_list.indexOf(tweet_id) < 0 && ignore_list.indexOf(original_id) < 0 && ignore_list.indexOf(tweet_id_str) < 0 && ignore_list.indexOf(original_id_str) < 0 && ignore_list.indexOf(screen_name) < 0) {
+					if(ignore_list.indexOf(tweet_id) < 0 && ignore_list.indexOf(original_id) < 0 && ignore_list.indexOf(screen_name) < 0) {
 						var no_ignore_keyword = true;
 						for (let ignore_keyword of ignore_keywords){
 							if(tweet['text'].toLowerCase().indexOf(ignore_keywords[0]) >= 0) no_ignore_keyword = false;
