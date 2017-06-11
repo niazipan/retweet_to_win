@@ -37,20 +37,6 @@ if (fs.existsSync(ignore_list_path)) {
     });
 }
 
-// load in the friend list
-if (fs.existsSync(friend_list_path)) {
-	console.log('loading friend list');
-	var friend_list_str = fs.readFileSync(ignore_list_path, 'utf8');
-	friend_list = friend_list_str.split();
-    //console.log('ignore list: ' + ignore_list);
-} else {
-	console.log('creating an friend list');
-	fs.closeSync(fs.openSync(friend_list_path, 'w'));
-	var text = 'dummylisting\n';
-	fs.appendFile(friend_list_path, text, function (err) {
-        if (err) return console.log(err);
-    });
-}
 // Check rate limits - and quit the app if we're about to get blocked
 function checkRateLimit (){
 	console.log("Checking rate limits");
@@ -179,10 +165,8 @@ function CheckForFollowRequest(item){
 				Twitter.post('friendships/create', {'screen_name': screen_name}, function(err, data, response){
 					if(err){
 						console.log("Follow error: " + err);
-						console.log(screen_name);
 					} else {
 						console.log("Follow: " + screen_name);
-						//addToFriendList(screen_name);
 					}
 				});					
 			}
@@ -231,33 +215,41 @@ function ScanForContests(){
 
 		for (var search_query of config['search_queries']){
 			Twitter.get('search/tweets', {'q':search_query, 'result_type':'recent', 'count':100, 'lang': 'en'}, function(err, data, response) {
-				if (err) console.log("Search error: " + err);
-				
-				for(var tweet of data.statuses){
-					var tweet_id = tweet['id_str'];
-			  		var original_id;
-			  		var screen_name = tweet['user']['screen_name'];
+				if (err) {	
+					console.log("Search error: " + err);
+				} else {
+					for(var tweet of data.statuses){
+						var tweet_id = tweet['id_str'];
+				  		var original_id;
+				  		var screen_name = tweet['user']['screen_name'];
 
-					if(tweet.hasOwnProperty('retweeted_status')){
-			  			original_id = tweet['retweeted_status']['id_str'];
-			  		} else if (tweet['in_reply_to_status_id_str'] != null) {
-			  			original_id = tweet['in_reply_to_status_id_str'];
-			  		}
-					
-					if(ignore_list.indexOf(tweet_id) < 0 && ignore_list.indexOf(original_id) < 0 && ignore_list.indexOf(screen_name) < 0) {
-						var no_ignore_keyword = true;
-						for (let ignore_keyword of ignore_keywords){
-							if(tweet['text'].toLowerCase().indexOf(ignore_keywords[0]) >= 0) no_ignore_keyword = false;
-						}
-						if (no_ignore_keyword){
-							post_list.push(tweet);
-				  			addToIgnoreList(tweet_id);
-				  			addToIgnoreList(original_id);
-				  			addToIgnoreList(screen_name);
-			  			}
-			  		} 
+						if(tweet.hasOwnProperty('retweeted_status')){
+				  			original_id = tweet['retweeted_status']['id_str'];
+				  		} else if (tweet['in_reply_to_status_id_str'] != null) {
+				  			original_id = tweet['in_reply_to_status_id_str'];
+				  		}
+						
+						if(ignore_list.indexOf(tweet_id) < 0 && ignore_list.indexOf(original_id) < 0 && ignore_list.indexOf(screen_name) < 0) {
+							var no_ignore_keyword = true;
+							var no_ignore_screen_name = true;
+
+							for (let ignore_keyword of ignore_keywords){
+								if(tweet['text'].toLowerCase().indexOf(ignore_keyword) >= 0) no_ignore_keyword = false;
+							}
+
+							for (let ignore_screen_name of config['ignore_screen_names']){
+								if(tweet['user']['name'].toLowerCase().indexOf(ignore_screen_name) >= 0) no_ignore_screen_name = false;
+							}
+
+							if (no_ignore_keyword && no_ignore_screen_name){
+								post_list.push(tweet);
+					  			addToIgnoreList(tweet_id);
+					  			addToIgnoreList(original_id);
+					  			addToIgnoreList(screen_name);
+				  			}
+				  		} 
+					}
 				}
-				
 			});
 		}
 
